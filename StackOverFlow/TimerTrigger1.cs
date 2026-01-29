@@ -24,7 +24,7 @@ public class TimerFunction
         _logger.LogInformation($"Slack response: {slackResponse}");
     }
 
-    private static async Task<string> MakeSlackRequest(string message)
+    private async Task<string> MakeSlackRequest(string message)
     {
         using var client = new HttpClient();
 
@@ -34,6 +34,12 @@ public class TimerFunction
             "application/json");
 
         var webhookUrl = Environment.GetEnvironmentVariable("SlackWebhookUrl");
+
+        if (string.IsNullOrWhiteSpace(webhookUrl))
+        {
+            _logger.LogError("SlackWebhookUrl is not configured");
+            return "Webhook missing";
+        }
 
         var response = await client.PostAsync(webhookUrl, payload);
         return await response.Content.ReadAsStringAsync();
