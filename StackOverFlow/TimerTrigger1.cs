@@ -1,6 +1,8 @@
+using System.Net;
 using System.Text;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace StackOverFlow;
 
@@ -15,11 +17,17 @@ public class TimerFunction
 
     [Function("TimerFunction")]
     public async Task Run(
-        [TimerTrigger("0 */5 * * * *")] TimerInfo timer)
+        [TimerTrigger("0 30 9 * * *")] TimerInfo timer)
     {
+        var jsonString = await MakeStackOverflowRequest();
+        
+        var jsonOb = JsonConvert.DeserializeObject<dynamic>(jsonString);
+
+        var newQuestionCount = jsonOb.items.Count;
+        
         _logger.LogInformation($"Timer trigger executed at {DateTime.Now}");
 
-        var slackResponse = await MakeSlackRequest("Hello from Azure!");
+        var slackResponse = await MakeSlackRequest($"You have {newQuestionCount} questions on stackoverflow");
 
         _logger.LogInformation($"Slack response: {slackResponse}");
     }
@@ -43,5 +51,27 @@ public class TimerFunction
 
         var response = await client.PostAsync(webhookUrl, payload);
         return await response.Content.ReadAsStringAsync();
+    }
+
+    private async Task<string> MakeStackOverflowRequest()
+    {
+        var epochTime = (Int32)(DateTime.UtcNow.AddDays(-1).Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
+        
+        HttpClientHandler handler = new HttpClientHandler()
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+        };
+        
+        using var client = new HttpClient(handler);
+        
+        client.DefaultRequestHeaders.Add("User-Agent", "CSharpAzureFunction/1.0 (Contact: your@email.com)");
+        
+        client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        
+        var payload = await  client.GetAsync($"https://api.stackexchange.com/2.3/search?fromdate={epochTime}&order=desc&sort=activity&intitle=rcs&site=stackoverflow");
+        
+        var result = await payload.Content.ReadAsStringAsync();
+        
+        return result;
     }
 }
